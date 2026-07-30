@@ -1,0 +1,11 @@
+venv/
+__pycache__/
+*.pyc
+.env
+bot_data.db
+bot_session.session
+temp/
+cache/
+logs/
+profiles/
+whisper_cache/

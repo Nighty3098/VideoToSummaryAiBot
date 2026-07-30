@@ -1,0 +1,48 @@
+{
+  "start": {
+    "welcome": "👋 Welcome! Send me a **YouTube link** or a **video/audio file**, and I'll send you back a summary in Markdown.\n\nJust paste a link or upload a file to get started."
+  },
+
+  "process": {
+    "downloading": "Downloading media...",
+    "downloading_youtube": "Downloading media... (attempt {attempt}/5)",
+    "extracting_subs": "Extracting subtitles...",
+    "downloading_file": "Downloading file from Telegram...",
+    "transcribing": "Transcribing audio (this may take a while)...",
+    "generating_summary": "Generating summary with AI...",
+    "sending_summary": "Sending summary...",
+    "success_caption": "📄 Summary ready!",
+    "error_user": "Error, please try again later.",
+    "error_admin": "❌ **Error for user `{user_id}`**\n`{error}`\n\nRequest #{req_id}"
+  },
+
+  "admin": {
+    "panel_title": "📊 **Admin Panel**\n\nSelect an action:",
+    "stats": "📊 **Bot Statistics**\n\n👥 Allowed users: **{total_users}**\n📝 Total requests: **{total_requests}**\n📅 Today: **{today_requests}**\n✅ Completed: **{completed}**\n❌ Errors: **{errors}**",
+    "users_title": "👥 **Allowed Users** (page {page}/{total_pages})\n",
+    "no_users": "\nNo users yet.",
+    "user_line": "• **{name}** (`{user_id}`)",
+    "no_logs": "No log file for today yet.",
+    "logs_caption": "📋 Logs (last {count} lines of {filename})",
+    "add_user_prompt": "Send me the user ID or forward any message from the user.",
+    "add_user_invalid": "Invalid ID. Send a numeric ID or forward a message from the user.",
+    "add_user_no_id": "Could not determine user ID.",
+    "add_user_success": "✅ User `{user_id}` ({name}) has been granted access.",
+    "notify_new_user": "✅ You now have access to AI Video Summary Bot.\nSend a YouTube link or video/audio file to get started.",
+    "notify_failed": "Could not notify user {user_id}",
+    "remove_success": "User removed.",
+    "remove_not_found": "User not found.",
+    "clearing_cache": "🧹 Clearing cache...",
+    "cache_cleared": "✅ Cache cleared.",
+    "reset_confirm": "⚠️ **Reset all statistics?**\n\nThis will delete ALL request history. This cannot be undone.",
+    "reset_done": "Statistics reset.",
+    "cancel_add": "Cancel",
+    "back": "◀️ Back"
+  },
+
+  "qwen": {
+    "rate_limit": "ERROR: Qwen rate limit exceeded. Try again later.",
+    "timeout": "ERROR: Qwen AI did not respond within the timeout period.",
+    "no_response": "ERROR: Qwen did not respond in time."
+  }
+}
