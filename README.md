@@ -1,8 +1,8 @@
 # AI Video Summary Bot
 
 <div align="center">
-  <img src="./imgs/1.png" width="48%" align="left" />
-  <img src="./imgs/2.png" width="48%" align="right" />
+  <img src="./imgs/1.png" width="45%" align="left" />
+  <img src="./imgs/2.png" width="45%" align="right" />
 </div>
 
 A Telegram bot that transcribes video/audio and generates structured Markdown summaries via AI.
