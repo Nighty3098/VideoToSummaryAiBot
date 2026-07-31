@@ -1,5 +1,9 @@
 # AI Video Summary Bot
 
+<img src="./imgs/1.png" width="40%" align="left" />
+<img src="./imgs/2.png" width="40%" align="right" />
+<img src="./imgs/3.png" width="80%" align="center" />
+
 A Telegram bot that transcribes video/audio and generates structured Markdown summaries via AI.
 
 ## Features
@@ -12,29 +16,6 @@ A Telegram bot that transcribes video/audio and generates structured Markdown su
 - **Whitelist** — only authorized users can access the bot
 - **Admin panel** — statistics, user management, logs, cache clearing, stats reset
 - **Proxy support** — MTProxy for Telegram, SOCKS5 for yt-dlp with health check and automatic fallback
-- **Logging** — color console + daily file rotation
-
-## Architecture
-
-```
-bot.py                 — entry point, CUDA lib pre-load, client init
-config.py              — environment variables and constants
-database.py            — SQLite (users, requests)
-logger.py              — color console + file logger
-proxy_utils.py         — tg://proxy URL parser
-downloader.py          — yt-dlp with SOCKS5 health check and retries
-transcriber.py         — faster-whisper large-v3 (CUDA)
-qwen_client.py         — Playwright → chat.qwen.ai with html2text conversion
-cache.py               — disk cache for audio, transcriptions, subtitles
-messages.py            — user-facing strings loader (from messages.json)
-messages.json          — all user-facing messages in one place
-handlers/
-├── __init__.py        — global client holder
-├── auth.py            — whitelist decorator
-├── start.py           — /start
-├── process.py         — main processing pipeline (with caching)
-└── admin.py           — /admin_p panel
-```
 
 ## Installation
 
@@ -47,7 +28,7 @@ handlers/
 ### Quick install
 
 ```bash
-git clone <repo> && cd ai_video_summary_bot
+git clone https://github.com/Nighty3098/VideoToSummaryAiBot && cd VideoToSummaryAiBot
 bash install.sh
 ```
 
@@ -71,17 +52,17 @@ cp .env.example .env
 
 #### Environment variables
 
-| Variable | Required | Description |
-|---|---|---|
-| `BOT_TOKEN` | yes | Bot token from @BotFather |
-| `API_ID` | yes | API ID from my.telegram.org |
-| `API_HASH` | yes | API Hash from my.telegram.org |
-| `ADMIN_ID` | yes | Telegram ID of the admin |
-| `USE_PROXY` | no | MTProxy for Telegram (1/0) |
-| `PROXY_URL` | no | `tg://proxy?server=...` |
-| `USE_SOCKS5` | no | SOCKS5 for yt-dlp (1/0) |
-| `SOCKS5_PROXY` | no | `socks5://user:pass@host:port` |
-| `WHISPER_CACHE_DIR` | no | Whisper model cache directory |
+| Variable            | Required | Description                    |
+| ------------------- | -------- | ------------------------------ |
+| `BOT_TOKEN`         | yes      | Bot token from @BotFather      |
+| `API_ID`            | yes      | API ID from my.telegram.org    |
+| `API_HASH`          | yes      | API Hash from my.telegram.org  |
+| `ADMIN_ID`          | yes      | Telegram ID of the admin       |
+| `USE_PROXY`         | no       | MTProxy for Telegram (1/0)     |
+| `PROXY_URL`         | no       | `tg://proxy?server=...`        |
+| `USE_SOCKS5`        | no       | SOCKS5 for yt-dlp (1/0)        |
+| `SOCKS5_PROXY`      | no       | `socks5://user:pass@host:port` |
+| `WHISPER_CACHE_DIR` | no       | Whisper model cache directory  |
 
 ## Usage
 
@@ -97,14 +78,14 @@ Repeated requests for the same YouTube video use cached audio and transcription 
 
 Command `/admin_p`:
 
-| Button | Action |
-|---|---|
-| 📊 Statistics | Request statistics |
-| 👥 Users | User list, removal |
-| ➕ Add User | Add user (by ID or forwarded message) |
-| 📋 Logs | Last 200 lines of today's log |
-| 🧹 Clear Cache | Clears `temp/` and `logs/` |
-| 🔄 Reset Stats | Resets all request statistics |
+| Button         | Action                                |
+| -------------- | ------------------------------------- |
+| 📊 Statistics  | Request statistics                    |
+| 👥 Users       | User list, removal                    |
+| ➕ Add User    | Add user (by ID or forwarded message) |
+| 📋 Logs        | Last 200 lines of today's log         |
+| 🧹 Clear Cache | Clears `temp/` and `logs/`            |
+| 🔄 Reset Stats | Resets all request statistics         |
 
 ## Caching
 
@@ -159,21 +140,8 @@ source venv/bin/activate && playwright install chromium
 
 The bot uses `html2text` to convert Qwen's rendered HTML back to Markdown. If formatting issues persist, check that the Qwen AI is following the prompt instructions.
 
-## Tech Stack
-
-- **Telethon** — MTProto Telegram client
-- **faster-whisper** (large-v3) — GPU-accelerated transcription
-- **yt-dlp** — YouTube audio download
-- **Playwright** — Qwen AI browser automation
-- **html2text** — HTML-to-Markdown conversion
-- **SQLite** — user and statistics storage
-- **CUDA 12.x** — GPU acceleration for Whisper
-
 ## Logging
 
 ```
 logs/bot_YYYY-MM-DD.log
 ```
-
-Level: DEBUG. Color output in console, plain text in file.
-Telethon has its own logger (`telethon`).
