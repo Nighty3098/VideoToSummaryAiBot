@@ -1,11 +1,28 @@
+# Python
 venv/
 __pycache__/
 *.pyc
+*.pyo
+
+# Environment & secrets
 .env
+.env.local
+
+# Data
 bot_data.db
+bot_data.db-shm
+bot_data.db-wal
 bot_session.session
+
+# Runtime directories
 temp/
 cache/
 logs/
 profiles/
 whisper_cache/
+imgs/
+screenshots/
+
+# OS
+.DS_Store
+Thumbs.db

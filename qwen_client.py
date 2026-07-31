@@ -5,7 +5,7 @@ import logging
 import html2text
 from playwright.async_api import async_playwright
 
-from config import QWEN_URL, QWEN_TIMEOUT, QWEN_PROFILE_DIR
+from config import QWEN_URL, QWEN_TIMEOUT, QWEN_PROFILE_DIR, QWEN_MAX_PROMPT_CHARS, QWEN_PROXY
 from messages import get
 
 _html_converter = html2text.HTML2Text()
@@ -78,6 +78,9 @@ async def _extract_html_md(locator) -> str:
 
 async def generate_summary(transcription: str, video_title: str | None = None) -> str:
     prompt = SUMMARY_PROMPT.format(text=transcription)
+    if len(prompt) > QWEN_MAX_PROMPT_CHARS:
+        logger.error(f"Prompt too large for Qwen: {len(prompt)} chars")
+        return "ERROR: Prompt exceeds Qwen character limit."
     try:
         text = await asyncio.wait_for(_query_qwen(prompt), timeout=QWEN_TIMEOUT + 30)
     except asyncio.TimeoutError:
@@ -90,18 +93,23 @@ async def _query_qwen(prompt: str) -> str:
     os.makedirs(QWEN_PROFILE_DIR, exist_ok=True)
     _clean_lock_files()
 
+    launch_kwargs = dict(
+        user_data_dir=QWEN_PROFILE_DIR,
+        headless=False,
+        viewport={"width": 1920, "height": 1600},
+        args=[
+            "--disable-blink-features=AutomationControlled",
+            "--no-sandbox",
+        ],
+        ignore_default_args=["--enable-automation"],
+        color_scheme="light",
+    )
+    if QWEN_PROXY:
+        logger.info(f"Using proxy for Qwen browser: {QWEN_PROXY}")
+        launch_kwargs["proxy"] = {"server": QWEN_PROXY}
+
     async with async_playwright() as p:
-        context = await p.chromium.launch_persistent_context(
-            user_data_dir=QWEN_PROFILE_DIR,
-            headless=False,
-            viewport={"width": 1920, "height": 1600},
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
-            ],
-            ignore_default_args=["--enable-automation"],
-            color_scheme="light",
-        )
+        context = await p.chromium.launch_persistent_context(**launch_kwargs)
 
         page = await context.new_page()
 

@@ -17,6 +17,7 @@ from config import ADMIN_ID, TEMP_DIR
 from handlers.admin import _waiting_for_add
 from messages import get
 from cache import youtube_key, file_key, is_cached, set_file, set_text, get_text, get_path, set_meta, get_meta
+from text_utils import clean_vtt, clean_transcription, select_for_qwen
 
 logger = logging.getLogger(__name__)
 
@@ -66,11 +67,12 @@ def register(client):
                     if cached.get("transcription"):
                         logger.info(f"Cache hit: transcription for {cache_key}")
                         await _update_status(status_msg, "Loading cached transcription...")
-                        transcription = get_text(cache_key, "transcription.txt")
-                        subtitles_text = get_text(cache_key, "subtitles.txt")
+                        transcription = clean_transcription(get_text(cache_key, "transcription.txt") or "")
+                        subtitles_text = clean_vtt(get_text(cache_key, "subtitles.txt") or "")
                         video_title = cached.get("title", "")
                         if transcription:
-                            full_text = _merge_text(transcription, subtitles_text)
+                            full_text, source = select_for_qwen(transcription, subtitles_text)
+                            logger.info(f"Using text source: {source}")
                             await _send_summary(event, status_msg, work_dir, full_text, video_title, req_id, start_time)
                             return
                     if cached.get("audio"):
@@ -101,7 +103,7 @@ def register(client):
                         set_file(cache_key, "audio.mp3", audio_path)
 
                     if subs_path:
-                        subtitles_text = _read_subs(subs_path)
+                        subtitles_text = clean_vtt(_read_subs(subs_path))
                         if cache_key:
                             set_text(cache_key, "subtitles.txt", subtitles_text)
                 else:
@@ -128,14 +130,17 @@ def register(client):
             if cache_key and is_cached(cache_key, "transcription.txt"):
                 logger.info(f"Cache hit: transcription for {cache_key}")
                 await _update_status(status_msg, "Loading cached transcription...")
-                transcription = get_text(cache_key, "transcription.txt")
-                subtitles_text = get_text(cache_key, "subtitles.txt")
+                transcription = clean_transcription(get_text(cache_key, "transcription.txt") or "")
+                subtitles_text = clean_vtt(get_text(cache_key, "subtitles.txt") or "")
                 if transcription:
-                    await _send_summary(event, status_msg, work_dir, transcription, req_id, start_time)
+                    full_text, source = select_for_qwen(transcription, subtitles_text)
+                    logger.info(f"Using text source: {source}")
+                    await _send_summary(event, status_msg, work_dir, full_text, video_title, req_id, start_time)
                     return
 
             await _update_status(status_msg, get("process.transcribing"))
             transcription = await transcribe(audio_path)
+            transcription = clean_transcription(transcription)
             logger.info(f"Transcription: {len(transcription)} chars")
 
             if cache_key:
@@ -144,7 +149,8 @@ def register(client):
                     set_text(cache_key, "subtitles.txt", subtitles_text)
                 set_meta(cache_key, transcription=True)
 
-            full_text = _merge_text(transcription, subtitles_text)
+            full_text, source = select_for_qwen(transcription, subtitles_text)
+            logger.info(f"Using text source: {source}")
 
             await _update_status(status_msg, get("process.generating_summary"))
             summary = await generate_summary(full_text, video_title=video_title)
@@ -220,17 +226,6 @@ async def _send_summary(event, status_msg, work_dir, full_text, video_title, req
         await status_msg.delete()
     except Exception:
         pass
-
-
-def _merge_text(transcription: str, subtitles: str | None) -> str:
-    if subtitles:
-        return (
-            "=== SUBTITLES ===\n"
-            f"{subtitles}\n\n"
-            "=== WHISPER TRANSCRIPTION ===\n"
-            f"{transcription}"
-        )
-    return transcription
 
 
 def _has_media_file(event: NewMessage.Event) -> bool:
