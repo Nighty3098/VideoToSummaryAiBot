@@ -25,3 +25,4 @@ screenshots/
 # OS
 .DS_Store
 Thumbs.db
+bot_session.session-journal
