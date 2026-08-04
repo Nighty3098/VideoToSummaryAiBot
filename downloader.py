@@ -147,10 +147,5 @@ async def download_telegram_file(
     """
     ext = Path(file_name).suffix.lower()
     dest = os.path.join(work_dir, f"telegram_input{ext}")
-    loop = asyncio.get_running_loop()
-
-    def _sync():
-        return message.download_media(file=dest)
-
-    path = await loop.run_in_executor(None, _sync)
+    path = await message.download_media(file=dest)
     return path, None

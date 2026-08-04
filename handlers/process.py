@@ -281,11 +281,8 @@ def _ensure_audio(path: str, work_dir: str) -> str:
 
 
 async def _download_tg_file(event, work_dir: str, file_name: str) -> tuple[str, None]:
-    loop = asyncio.get_running_loop()
     dest = os.path.join(work_dir, file_name)
-    def _sync():
-        return event.message.download_media(file=dest)
-    path = await loop.run_in_executor(None, _sync)
+    path = await event.message.download_media(file=dest)
     return path, None
 
 
