@@ -6,7 +6,11 @@ from pathlib import Path
 
 from telethon import events
 from telethon.events import NewMessage
-from telethon.tl.types import MessageMediaDocument
+from telethon.tl.types import (
+    MessageMediaDocument,
+    DocumentAttributeAudio,
+    DocumentAttributeVideo,
+)
 
 from handlers.auth import auth_required
 from downloader import is_youtube_url, download_youtube_audio, extract_youtube_video_id
@@ -28,7 +32,7 @@ def register(client):
     async def process_handler(event: NewMessage.Event):
         if event.sender_id in _waiting_for_add:
             return
-        if event.sender_id == ADMIN_ID and event.message.forward:
+        if event.sender_id == ADMIN_ID and event.message.forward and not _has_media_file(event):
             return
 
         text = event.raw_text.strip()
@@ -233,14 +237,25 @@ def _has_media_file(event: NewMessage.Event) -> bool:
     if not media:
         return False
     if isinstance(media, MessageMediaDocument):
-        mime = getattr(media.document, "mime_type", "") or ""
-        return mime.startswith("video/") or mime.startswith("audio/")
+        doc = media.document
+        mime = (getattr(doc, "mime_type", "") or "").lower()
+        if mime.startswith("video/") or mime.startswith("audio/"):
+            return True
+        for attr in doc.attributes:
+            if isinstance(attr, DocumentAttributeAudio) and attr.voice:
+                return True
+            if isinstance(attr, DocumentAttributeVideo) and attr.round_message:
+                return True
     return False
 
 
 def _get_file_name(event: NewMessage.Event) -> str:
     doc = event.message.media.document
     for attr in doc.attributes:
+        if isinstance(attr, DocumentAttributeAudio) and attr.voice:
+            return "voice.ogg"
+        if isinstance(attr, DocumentAttributeVideo) and attr.round_message:
+            return "round.mp4"
         if hasattr(attr, "file_name") and attr.file_name:
             return attr.file_name
     ext = _mime_to_ext(doc.mime_type)
@@ -256,7 +271,8 @@ def _mime_to_ext(mime: str) -> str:
         "video/mp4": ".mp4", "video/webm": ".webm", "video/x-matroska": ".mkv",
         "video/quicktime": ".mov", "video/avi": ".avi",
         "audio/mpeg": ".mp3", "audio/mp4": ".m4a", "audio/wav": ".wav",
-        "audio/ogg": ".ogg", "audio/flac": ".flac",
+        "audio/x-wav": ".wav", "audio/ogg": ".ogg", "audio/opus": ".opus",
+        "audio/flac": ".flac", "audio/aac": ".aac", "audio/m4a": ".m4a",
     }
     return mapping.get(mime, ".bin")
 
