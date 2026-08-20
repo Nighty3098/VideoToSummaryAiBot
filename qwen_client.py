@@ -196,30 +196,39 @@ async def _query_qwen(prompt: str) -> str:
             await page.goto(QWEN_URL, wait_until="load", timeout=60000)
             await asyncio.sleep(2)
 
-            login_btn = page.locator(
-                "button:has-text('Log in'), "
-                "button:has-text('Sign in'), "
-                ".auth-button-ui.login"
-            ).first
-            login_detected = await login_btn.is_visible(timeout=3000)
-            if login_detected:
-                logger.warning("Qwen login page detected, waiting for session restore...")
-                for _ in range(10):
-                    await asyncio.sleep(3)
-                    if not await login_btn.is_visible(timeout=1000):
-                        login_detected = False
-                        logger.info("Qwen session restored, continuing...")
-                        break
-                if login_detected:
-                    logger.critical("Qwen requires login; aborting instead of sending prompt into login page")
-                    return get("qwen.need_login")
-
             input_sel = QWEN_INPUT_SELECTOR
             try:
                 await page.wait_for_selector(input_sel, timeout=15000)
+                input_ok = True
             except Exception:
                 input_sel = "textarea, div[contenteditable='true']"
-                await page.wait_for_selector(input_sel, timeout=10000)
+                try:
+                    await page.wait_for_selector(input_sel, timeout=10000)
+                    input_ok = True
+                except Exception:
+                    input_ok = False
+
+            if not input_ok:
+                login_btn = page.locator(
+                    "button:has-text('Log in'), "
+                    "button:has-text('Sign in'), "
+                    ".auth-button-ui.login"
+                ).first
+                if await login_btn.is_visible(timeout=3000):
+                    logger.warning("Qwen login page detected, waiting for session restore...")
+                    for _ in range(10):
+                        await asyncio.sleep(3)
+                        try:
+                            await page.wait_for_selector(input_sel, timeout=1000)
+                            input_ok = True
+                            break
+                        except Exception:
+                            pass
+                    if not input_ok:
+                        logger.critical("Qwen requires login; aborting instead of sending prompt into login page")
+                        return get("qwen.need_login")
+                if not input_ok:
+                    raise RuntimeError("Qwen chat input not found and no login page detected")
 
             input_field = page.locator(input_sel).first
             await input_field.click()
