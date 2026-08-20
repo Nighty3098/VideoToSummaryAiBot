@@ -38,41 +38,28 @@ QWEN_INPUT_SELECTOR = (
 )
 
 QWEN_RESPONSE_SELECTORS = (
-    "#chat-message-container .markdown-body",
     ".response-message-content.phase-answer",
     ".qwen-markdown",
     ".markdown-body",
     ".ant-typography",
+    "#chat-message-container .markdown-body",
 )
 
-QWEN_STOP_BTN = "button:has(use[*|href='#icon-fill-stop-011']), .icon-fill-stop-011"
-
-FALLBACK_EXTRACT_JS = """
-    () => {
-        const pick = (els) => {
-            let best = null, bl = 0;
-            for (const n of els) {
-                const t = (n.innerText || '').trim();
-                const l = t.length;
-                if (l > 40 && l > bl) { best = n; bl = l; }
-            }
-            return best;
-        };
-        const md = pick(document.querySelectorAll('[class*="markdown"], [class*="Markdown"]'));
-        if (md) return md.outerHTML;
-        const leaf = pick(
-            [...document.querySelectorAll('body *')].filter(n => n.childElementCount === 0)
-        );
-        if (leaf) return leaf.outerHTML;
-        return '';
-    }
-"""
+QWEN_STOP_BTN = (
+    "button:has(use[*|href='#icon-fill-stop-011']), "
+    "button.stop-button, "
+    ".anticon-stop, "
+    "button:has-text('Stop'), "
+    ".chat-input-stop"
+)
 
 QWEN_SEND_BTN = (
+    ".send-button:has(use[*|href='#icon-line-arrow-up']), "
+    ".chat-prompt-send-button button, "
     "button[aria-label='Send Message'], "
     "button:has(.anticon-send), "
-    ".chat-prompt-send-button button, "
-    "button:has(.send-icon)"
+    "button:has(.send-icon), "
+    ".chat-input-send"
 )
 
 STEALTH_SCRIPT = """
@@ -112,12 +99,6 @@ STEALTH_SCRIPT = """
             originalQuery(parameters)
     );
 """
-
-QWEN_THINKING_SELECTORS = (
-    "[class*='thinking-status']",
-    "[class*='ThinkingStatus']",
-    ".qwen-chat-thinking-status-card-title-text",
-)
 
 SUMMARY_PROMPT_RU = (
     "Составь подробную заметку-конспект на русском языке. Используй Markdown, совместимый с Obsidian.\n\n"
@@ -272,22 +253,8 @@ async def _query_qwen(prompt: str) -> str:
             logger.info("Waiting for Qwen response...")
             last_text = ""
             stable_count = 0
+            rechecked_send = False
             regenerate_clicked = False
-            last_recheck = -999
-            recoveries = 0
-            MAX_RECOVERIES = 4
-            RECHECK_INTERVAL = 40
-            abandoned_at: int | None = None
-            ABANDON_GRACE = 120
-            STABLE_NEEDED = 20
-
-            try:
-                baseline_len = len(
-                    await page.evaluate("() => document.body.innerText")
-                )
-            except Exception:
-                baseline_len = 0
-            last_len = baseline_len
 
             for attempt in range(QWEN_TIMEOUT * 2):
                 try:
@@ -295,117 +262,80 @@ async def _query_qwen(prompt: str) -> str:
                 except Exception:
                     pass
                 try:
-                    body_text = await page.evaluate("() => document.body.innerText")
-                    if "Requests rate limit exceeded" in body_text:
-                        logger.critical("Qwen rate limit detected!")
-                        return get("qwen.rate_limit")
+                    page_content = await page.content()
                 except Exception:
                     await asyncio.sleep(0.5)
                     continue
+                if "Requests rate limit exceeded" in page_content:
+                    logger.critical("Qwen rate limit detected!")
+                    return get("qwen.rate_limit")
 
-                cur_len = len(body_text)
-                is_generating = cur_len > last_len
-                if is_generating:
-                    stable_count = 0
-                    last_len = cur_len
-                else:
-                    stable_count += 1
+                interrupted = page.locator(
+                    ".qwen-chat-thinking-status-card-title-text:has-text('Мысль прервана')"
+                ).first
+                if await interrupted.is_visible(timeout=500):
+                    if not regenerate_clicked:
+                        logger.warning("Detected 'Мысль прервана', clicking regenerate...")
+                        regenerate_button = page.locator(
+                            ".qwen-chat-package-comp-new-action-control-container-regenerate"
+                        ).first
+                        if await regenerate_button.is_visible(timeout=5000):
+                            await regenerate_button.click()
+                            regenerate_clicked = True
+                            await asyncio.sleep(1)
 
-                grew_enough = cur_len > baseline_len + 50
-
-                if not regenerate_clicked:
-                    for sel in QWEN_THINKING_SELECTORS:
-                        interrupted = page.locator(sel).filter(has_text="прерван").first
-                        if await interrupted.is_visible(timeout=100):
-                            logger.warning("Detected 'Мысль прервана', clicking regenerate...")
-                            regen_btn = page.locator(
-                                ".qwen-chat-package-comp-new-action-control-container-regenerate"
-                            ).first
-                            if await regen_btn.is_visible(timeout=2000):
-                                await regen_btn.click()
-                                regenerate_clicked = True
-                                await asyncio.sleep(1)
-                                break
-                        if regenerate_clicked:
-                            break
-
-                if attempt - last_recheck >= RECHECK_INTERVAL:
-                    last_recheck = attempt
-                    if not is_generating and not grew_enough:
-                        if recoveries < MAX_RECOVERIES:
-                            recoveries += 1
-                            logger.warning(
-                                f"No content and no generation, re-sending prompt "
-                                f"(recovery {recoveries}/{MAX_RECOVERIES})..."
-                            )
-                            await _refill_and_send(page, prompt)
-                            regenerate_clicked = False
-                            try:
-                                last_len = len(
-                                    await page.evaluate("() => document.body.innerText")
-                                )
-                            except Exception:
-                                pass
-                            continue
-                        elif await send_button.is_visible(timeout=1000) and await send_button.is_enabled(timeout=1000):
-                            logger.warning("Send button still visible, clicking again...")
-                            await send_button.click()
-                            try:
-                                last_len = len(
-                                    await page.evaluate("() => document.body.innerText")
-                                )
-                            except Exception:
-                                pass
-                            await asyncio.sleep(2)
-
-                if attempt % 4 == 0:
-                    try:
-                        t = await _extract_chat_text(page)
-                        if t:
-                            last_text = t
-                    except Exception:
-                        pass
-
-                if (
-                    not is_generating
-                    and grew_enough
-                    and stable_count >= STABLE_NEEDED
-                ):
-                    logger.info("Qwen generation appears finished, extracting text...")
-                    t = ""
-                    try:
-                        t = await _extract_chat_text(page)
-                    except Exception:
-                        pass
-                    if t:
-                        return t
-                    if last_text:
-                        return last_text
-                    tail = body_text[-8000:].strip()
-                    if len(tail) > 50:
-                        return tail
-
-                if (
-                    abandoned_at is None
-                    and not is_generating
-                    and not grew_enough
-                    and recoveries >= MAX_RECOVERIES
-                ):
-                    abandoned_at = attempt
-                    logger.warning(
-                        f"All {MAX_RECOVERIES} recoveries used and no response yet; "
-                        "will abandon shortly"
+                if attempt == 40 and not rechecked_send:
+                    rechecked_send = True
+                    is_generating_now = await page.locator(QWEN_STOP_BTN).first.is_visible(
+                        timeout=500
                     )
-                elif (
-                    abandoned_at is not None
-                    and not is_generating
-                    and not grew_enough
-                    and attempt - abandoned_at >= ABANDON_GRACE
-                ):
-                    logger.error("Qwen still not responding after recoveries, giving up")
-                    return get("qwen.no_response")
+                    if is_generating_now:
+                        logger.info("Generation already running, waiting...")
+                    else:
+                        if (
+                            await send_button.is_visible(timeout=2000)
+                            and await send_button.is_enabled(timeout=2000)
+                        ):
+                            logger.warning("Send button still available, clicking again...")
+                            await send_button.click()
+                        else:
+                            has_content = False
+                            for sel in QWEN_RESPONSE_SELECTORS:
+                                loc = page.locator(sel).last
+                                if await loc.is_visible(timeout=100):
+                                    current_text = await loc.inner_text()
+                                    if current_text and len(current_text.strip()) > 20:
+                                        has_content = True
+                                        break
+                            if not has_content:
+                                logger.warning("Generation did not start, pressing Enter again...")
+                                await page.keyboard.press("Enter")
 
-                if attempt % 40 == 0:
+                is_generating = await page.locator(QWEN_STOP_BTN).first.is_visible(timeout=500)
+
+                content = ""
+                for sel in QWEN_RESPONSE_SELECTORS:
+                    loc = page.locator(sel).last
+                    try:
+                        if await loc.is_visible(timeout=100):
+                            t = await _extract_html_md(loc)
+                            if t and len(t.strip()) > 20:
+                                content = t
+                                break
+                    except Exception:
+                        continue
+
+                if content:
+                    if content == last_text and not is_generating:
+                        stable_count += 1
+                        if stable_count >= 8:
+                            logger.info("Qwen response complete, returning")
+                            return content
+                    elif content != last_text:
+                        stable_count = 0
+                        last_text = content
+
+                if attempt % 20 == 0:
                     logger.info(f"Waiting for Qwen... ({attempt // 2}s)")
 
                 await asyncio.sleep(0.5)
@@ -422,60 +352,10 @@ async def _query_qwen(prompt: str) -> str:
             await context.close()
 
 
-async def _refill_and_send(page, prompt: str):
-    """Re-fill the input and send the prompt once (used after a dialog reset)."""
-    input_sel = QWEN_INPUT_SELECTOR
-    try:
-        await page.wait_for_selector(input_sel, timeout=5000)
-    except Exception:
-        input_sel = "textarea, div[contenteditable='true']"
-        await page.wait_for_selector(input_sel, timeout=5000)
-    input_field = page.locator(input_sel).first
-    await input_field.click()
-    await input_field.fill(prompt)
-    await asyncio.sleep(1)
-    send_button = page.locator(QWEN_SEND_BTN).first
-    if await send_button.is_visible() and await send_button.is_enabled():
-        await send_button.click()
-        logger.info("Recovery: prompt sent via send button")
-    else:
-        await page.keyboard.press("Enter")
-        logger.info("Recovery: prompt sent via Enter")
-    await asyncio.sleep(2)
-    try:
-        val = await input_field.input_value()
-        if val and len(val) > 50:
-            logger.warning("Recovery: input still has the prompt, send likely failed")
-    except Exception:
-        pass
-
-
 async def _extract_html_md(locator) -> str:
     """Return the locator's inner HTML converted to markdown text."""
     html = await locator.evaluate("el => el.innerHTML")
     return _html_converter.handle(html).strip()
-
-
-async def _extract_chat_text(page) -> str:
-    """Best-effort extraction of the generated answer from the page."""
-    for sel in QWEN_RESPONSE_SELECTORS:
-        try:
-            loc = page.locator(sel).last
-            if await loc.is_visible(timeout=50):
-                t = await _extract_html_md(loc)
-                if len(t) > 20:
-                    return t
-        except Exception:
-            continue
-    try:
-        raw = await page.evaluate(FALLBACK_EXTRACT_JS)
-        if raw:
-            t = _html_converter.handle(raw).strip()
-            if len(t) > 20:
-                return t
-    except Exception:
-        pass
-    return ""
 
 
 def _clean_lock_files():
