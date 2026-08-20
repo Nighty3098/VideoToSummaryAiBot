@@ -1,48 +1,107 @@
 {
-  "start": {
-    "welcome": "👋 Welcome! Send me a **YouTube link** or a **video/audio file**, and I'll send you back a summary in Markdown.\n\nJust paste a link or upload a file to get started."
+  "en": {
+    "start": {
+      "choose_language": "👋 Welcome! Please choose your language:",
+      "choose_language_done": "✅ Language set to **English**.",
+      "needs_access": "⚠️ To use the bot you need access, granted by the admin.",
+      "welcome": "👋 Welcome! Send me a **YouTube link** or a **video/audio file**, and I'll send you back a summary in Markdown.\n\nJust paste a link or upload a file to get started."
+    },
+
+    "process": {
+      "downloading": "Downloading media...",
+      "downloading_youtube": "Downloading media... (attempt {attempt}/5)",
+      "extracting_subs": "Extracting subtitles...",
+      "downloading_file": "Downloading file from Telegram...",
+      "transcribing": "Transcribing audio (this may take a while)...",
+      "loading_cached": "Loading cached transcription...",
+      "generating_summary": "Generating summary with AI...",
+      "sending_summary": "Sending summary...",
+      "success_caption": "📄 Summary ready!",
+      "error_user": "Error, please try again later.",
+      "error_admin": "❌ **Error for user `{user_id}`**\n`{error}`\n\nRequest #{req_id}"
+    },
+
+    "admin": {
+      "panel_title": "📊 **Admin Panel**\n\nSelect an action:",
+      "stats": "📊 **Bot Statistics**\n\n👥 Allowed users: **{total_users}**\n📝 Total requests: **{total_requests}**\n📅 Today: **{today_requests}**\n✅ Completed: **{completed}**\n❌ Errors: **{errors}**",
+      "users_title": "👥 **Allowed Users** (page {page}/{total_pages})\n",
+      "no_users": "\nNo users yet.",
+      "user_line": "• **{name}** (`{user_id}`)",
+      "no_logs": "No log file for today yet.",
+      "logs_caption": "📋 Logs (last {count} lines of {filename})",
+      "add_user_prompt": "Send me the user ID or forward any message from the user.",
+      "add_user_invalid": "Invalid ID. Send a numeric ID or forward a message from the user.",
+      "add_user_no_id": "Could not determine user ID.",
+      "add_user_success": "✅ User `{user_id}` ({name}) has been granted access.",
+      "notify_new_user": "✅ You now have access to AI Video Summary Bot.\nPlease choose your language:",
+      "notify_failed": "Could not notify user {user_id}",
+      "remove_success": "User removed.",
+      "remove_not_found": "User not found.",
+      "clearing_cache": "🧹 Clearing cache...",
+      "cache_cleared": "✅ Cache cleared.",
+      "reset_confirm": "⚠️ **Reset all statistics?**\n\nThis will delete ALL request history. This cannot be undone.",
+      "reset_done": "Statistics reset.",
+      "cancel_add": "Cancel",
+      "back": "◀️ Back"
+    },
+
+    "qwen": {
+      "rate_limit": "ERROR: Qwen rate limit exceeded. Try again later.",
+      "timeout": "ERROR: Qwen AI did not respond within the timeout period.",
+      "no_response": "ERROR: Qwen did not respond in time."
+    }
   },
 
-  "process": {
-    "downloading": "Downloading media...",
-    "downloading_youtube": "Downloading media... (attempt {attempt}/5)",
-    "extracting_subs": "Extracting subtitles...",
-    "downloading_file": "Downloading file from Telegram...",
-    "transcribing": "Transcribing audio (this may take a while)...",
-    "generating_summary": "Generating summary with AI...",
-    "sending_summary": "Sending summary...",
-    "success_caption": "📄 Summary ready!",
-    "error_user": "Error, please try again later.",
-    "error_admin": "❌ **Error for user `{user_id}`**\n`{error}`\n\nRequest #{req_id}"
-  },
+  "ru": {
+    "start": {
+      "choose_language": "👋 Добро пожаловать! Выберите язык:",
+      "choose_language_done": "✅ Язык установлен: **Русский**.",
+      "needs_access": "⚠️ Для использования бота вам нужен доступ, который выдаёт администратор.",
+      "welcome": "👋 Добро пожаловать! Отправьте **ссылку на YouTube** или **видео/аудио файл** — я пришлю вам конспект в формате Markdown.\n\nПросто вставьте ссылку или загрузите файл."
+    },
 
-  "admin": {
-    "panel_title": "📊 **Admin Panel**\n\nSelect an action:",
-    "stats": "📊 **Bot Statistics**\n\n👥 Allowed users: **{total_users}**\n📝 Total requests: **{total_requests}**\n📅 Today: **{today_requests}**\n✅ Completed: **{completed}**\n❌ Errors: **{errors}**",
-    "users_title": "👥 **Allowed Users** (page {page}/{total_pages})\n",
-    "no_users": "\nNo users yet.",
-    "user_line": "• **{name}** (`{user_id}`)",
-    "no_logs": "No log file for today yet.",
-    "logs_caption": "📋 Logs (last {count} lines of {filename})",
-    "add_user_prompt": "Send me the user ID or forward any message from the user.",
-    "add_user_invalid": "Invalid ID. Send a numeric ID or forward a message from the user.",
-    "add_user_no_id": "Could not determine user ID.",
-    "add_user_success": "✅ User `{user_id}` ({name}) has been granted access.",
-    "notify_new_user": "✅ You now have access to AI Video Summary Bot.\nSend a YouTube link or video/audio file to get started.",
-    "notify_failed": "Could not notify user {user_id}",
-    "remove_success": "User removed.",
-    "remove_not_found": "User not found.",
-    "clearing_cache": "🧹 Clearing cache...",
-    "cache_cleared": "✅ Cache cleared.",
-    "reset_confirm": "⚠️ **Reset all statistics?**\n\nThis will delete ALL request history. This cannot be undone.",
-    "reset_done": "Statistics reset.",
-    "cancel_add": "Cancel",
-    "back": "◀️ Back"
-  },
+    "process": {
+      "downloading": "Загружаю файл...",
+      "downloading_youtube": "Загружаю файл... (попытка {attempt}/5)",
+      "extracting_subs": "Извлекаю субтитры...",
+      "downloading_file": "Скачиваю файл из Telegram...",
+      "transcribing": "Транскрибирую аудио (может занять время)...",
+      "loading_cached": "Загружаю кэшированную транскрибацию...",
+      "generating_summary": "Генерирую конспект с помощью ИИ...",
+      "sending_summary": "Отправляю конспект...",
+      "success_caption": "📄 Конспект готов!",
+      "error_user": "Ошибка, попробуйте позже.",
+      "error_admin": "❌ **Ошибка у пользователя `{user_id}`**\n`{error}`\n\nЗапрос #{req_id}"
+    },
 
-  "qwen": {
-    "rate_limit": "ERROR: Qwen rate limit exceeded. Try again later.",
-    "timeout": "ERROR: Qwen AI did not respond within the timeout period.",
-    "no_response": "ERROR: Qwen did not respond in time."
+    "admin": {
+      "panel_title": "📊 **Админ-панель**\n\nВыберите действие:",
+      "stats": "📊 **Статистика бота**\n\n👥 Разрешённые пользователи: **{total_users}**\n📝 Всего запросов: **{total_requests}**\n📅 За сегодня: **{today_requests}**\n✅ Выполнено: **{completed}**\n❌ Ошибок: **{errors}**",
+      "users_title": "👥 **Разрешённые пользователи** (стр. {page}/{total_pages})\n",
+      "no_users": "\nПользователей пока нет.",
+      "user_line": "• **{name}** (`{user_id}`)",
+      "no_logs": "Лог-файла за сегодня пока нет.",
+      "logs_caption": "📋 Логи (последние {count} строк из {filename})",
+      "add_user_prompt": "Пришлите ID пользователя или перешлите любое сообщение от него.",
+      "add_user_invalid": "Неверный ID. Отправьте числовой ID или перешлите сообщение от пользователя.",
+      "add_user_no_id": "Не удалось определить ID пользователя.",
+      "add_user_success": "✅ Пользователю `{user_id}` ({name}) предоставлен доступ.",
+      "notify_new_user": "✅ Вам предоставлен доступ к AI Video Summary Bot.\nВыберите язык:",
+      "notify_failed": "Не удалось уведомить пользователя {user_id}",
+      "remove_success": "Пользователь удалён.",
+      "remove_not_found": "Пользователь не найден.",
+      "clearing_cache": "🧹 Очищаю кэш...",
+      "cache_cleared": "✅ Кэш очищен.",
+      "reset_confirm": "⚠️ **Сбросить всю статистику?**\n\nЭто удалит ВСЮ историю запросов. Действие необратимо.",
+      "reset_done": "Статистика сброшена.",
+      "cancel_add": "Отмена",
+      "back": "◀️ Назад"
+    },
+
+    "qwen": {
+      "rate_limit": "ОШИБКА: Превышен лимит запросов Qwen. Попробуйте позже.",
+      "timeout": "ОШИБКА: Qwen AI не ответил за отведённое время.",
+      "no_response": "ОШИБКА: Qwen не ответил вовремя."
+    }
   }
 }

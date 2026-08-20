@@ -25,6 +25,7 @@ def init_db():
             username    TEXT,
             first_name  TEXT,
             is_allowed  INTEGER DEFAULT 0,
+            lang        TEXT,
             added_by    INTEGER,
             created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -41,6 +42,9 @@ def init_db():
             completed_at    TIMESTAMP
         );
     """)
+    cols = [r["name"] for r in conn.execute("PRAGMA table_info(users)")]
+    if "lang" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN lang TEXT")
     conn.commit()
 
 
@@ -76,6 +80,47 @@ def remove_user(user_id: int) -> bool:
     cur = conn.execute("UPDATE users SET is_allowed=0 WHERE user_id=?", (user_id,))
     conn.commit()
     return cur.rowcount > 0
+
+
+def set_user_lang(user_id: int, lang: str):
+    conn = _get_conn()
+    conn.execute(
+        """INSERT INTO users (user_id, lang, is_allowed) VALUES (?, ?, 0)
+           ON CONFLICT(user_id) DO UPDATE SET lang=excluded.lang""",
+        (user_id, lang),
+    )
+    conn.commit()
+
+
+def upsert_user_profile(user_id: int, username: str = "", first_name: str = ""):
+    """Save/refresh username and first_name without touching lang/is_allowed."""
+    conn = _get_conn()
+    conn.execute(
+        """INSERT INTO users (user_id, username, first_name) VALUES (?, ?, ?)
+           ON CONFLICT(user_id) DO UPDATE
+           SET username=excluded.username, first_name=excluded.first_name""",
+        (user_id, username or "", first_name or ""),
+    )
+    conn.commit()
+
+
+def get_user_lang(user_id: int) -> str | None:
+    """Return the user's saved language, or None if not chosen yet."""
+    cur = _get_conn().execute("SELECT lang FROM users WHERE user_id=?", (user_id,))
+    row = cur.fetchone()
+    lang = row["lang"] if row else None
+    return lang if lang in ("en", "ru") else None
+
+
+def ensure_allowed(user_id: int):
+    """Create (or re-enable) a user row without touching name/lang."""
+    conn = _get_conn()
+    conn.execute(
+        """INSERT INTO users (user_id, is_allowed) VALUES (?, 1)
+           ON CONFLICT(user_id) DO UPDATE SET is_allowed=1""",
+        (user_id,),
+    )
+    conn.commit()
 
 
 def get_allowed_users(page: int = 0, per_page: int = 10) -> list[dict]:

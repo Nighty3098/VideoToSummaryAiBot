@@ -13,9 +13,11 @@ from database import (
     get_allowed_users_count,
     add_user,
     remove_user,
+    get_user_lang,
 )
 from config import ADMIN_ID, TEMP_DIR, LOGS_DIR
 from messages import get
+from handlers.start import LANG_BUTTONS
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +35,15 @@ def register(client):
     @client.on(events.CallbackQuery)
     async def callback_handler(event: CallbackQuery.Event):
         uid = event.sender_id
+        data = event.data.decode()
+
+        if data.startswith("lang_"):
+            return
+
         if uid != ADMIN_ID:
             await event.answer("Access denied.", alert=True)
             return
 
-        data = event.data.decode()
         await event.answer()
 
         if data == "menu_stats":
@@ -137,10 +143,15 @@ def register(client):
             return
 
         add_user(target_id, username, first_name, ADMIN_ID)
-        await event.reply(get("admin.add_user_success", user_id=target_id, name=first_name))
+        lang = get_user_lang(ADMIN_ID)
+        await event.reply(get("admin.add_user_success", lang=lang, user_id=target_id, name=first_name))
 
         try:
-            await event.client.send_message(target_id, get("admin.notify_new_user"))
+            await event.client.send_message(
+                target_id,
+                get("admin.notify_new_user"),
+                buttons=LANG_BUTTONS,
+            )
         except Exception:
             logger.warning(get("admin.notify_failed", user_id=target_id))
 

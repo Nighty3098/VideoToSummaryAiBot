@@ -13,9 +13,11 @@ def _load() -> dict:
     return _MSGS
 
 
-def get(key: str, **kwargs) -> str:
+def get(key: str, lang: str = "en", **kwargs) -> str:
+    if lang not in ("en", "ru"):
+        lang = "ru"
     parts = key.split(".")
-    val = _load()
+    val = _load().get(lang, _load()["en"])
     for p in parts:
         val = val[p]
     if kwargs:

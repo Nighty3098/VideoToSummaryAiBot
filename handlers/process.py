@@ -16,7 +16,7 @@ from handlers.auth import auth_required
 from downloader import is_youtube_url, download_youtube_audio, extract_youtube_video_id
 from transcriber import transcribe
 from qwen_client import generate_summary
-from database import log_request, update_request
+from database import log_request, update_request, get_user_lang
 from config import ADMIN_ID, TEMP_DIR
 from handlers.admin import _waiting_for_add
 from messages import get
@@ -44,6 +44,7 @@ def register(client):
             return
 
         user_id = event.sender_id
+        lang = get_user_lang(user_id)
         work_dir = os.path.join(TEMP_DIR, uuid.uuid4().hex)
         os.makedirs(work_dir, exist_ok=True)
 
@@ -53,7 +54,7 @@ def register(client):
             status="downloading",
         )
 
-        status_msg = await event.reply(get("process.downloading"))
+        status_msg = await event.reply(get("process.downloading", lang=lang))
         start_time = _now_ts()
 
         try:
@@ -70,14 +71,14 @@ def register(client):
                     cached = get_meta(cache_key)
                     if cached.get("transcription"):
                         logger.info(f"Cache hit: transcription for {cache_key}")
-                        await _update_status(status_msg, "Loading cached transcription...")
+                        await _update_status(status_msg, get("process.loading_cached", lang=lang))
                         transcription = clean_transcription(get_text(cache_key, "transcription.txt") or "")
                         subtitles_text = clean_vtt(get_text(cache_key, "subtitles.txt") or "")
                         video_title = cached.get("title", "")
                         if transcription:
                             full_text, source = select_for_qwen(transcription, subtitles_text)
                             logger.info(f"Using text source: {source}")
-                            await _send_summary(event, status_msg, work_dir, full_text, video_title, req_id, start_time)
+                            await _send_summary(event, status_msg, work_dir, full_text, video_title, req_id, start_time, lang)
                             return
                     if cached.get("audio"):
                         logger.info(f"Cache hit: audio for {cache_key}")
@@ -88,7 +89,7 @@ def register(client):
                     last_error = None
                     for attempt in range(5):
                         try:
-                            txt = get("process.downloading_youtube", attempt=attempt + 1)
+                            txt = get("process.downloading_youtube", lang=lang, attempt=attempt + 1)
                             await _update_status(status_msg, txt)
                             audio_path, subs_path, video_title = await download_youtube_audio(text, work_dir)
                             if not audio_path:
@@ -121,7 +122,7 @@ def register(client):
             elif has_file:
                 file_name = _get_file_name(event)
                 file_size = _get_file_size(event)
-                await _update_status(status_msg, get("process.downloading_file"))
+                await _update_status(status_msg, get("process.downloading_file", lang=lang))
                 audio_path, _ = await _download_tg_file(event, work_dir, file_name)
                 if not audio_path:
                     raise RuntimeError("File download failed")
@@ -133,16 +134,16 @@ def register(client):
             # check cached transcription
             if cache_key and is_cached(cache_key, "transcription.txt"):
                 logger.info(f"Cache hit: transcription for {cache_key}")
-                await _update_status(status_msg, "Loading cached transcription...")
+                await _update_status(status_msg, get("process.loading_cached", lang=lang))
                 transcription = clean_transcription(get_text(cache_key, "transcription.txt") or "")
                 subtitles_text = clean_vtt(get_text(cache_key, "subtitles.txt") or "")
                 if transcription:
                     full_text, source = select_for_qwen(transcription, subtitles_text)
                     logger.info(f"Using text source: {source}")
-                    await _send_summary(event, status_msg, work_dir, full_text, video_title, req_id, start_time)
+                    await _send_summary(event, status_msg, work_dir, full_text, video_title, req_id, start_time, lang)
                     return
 
-            await _update_status(status_msg, get("process.transcribing"))
+            await _update_status(status_msg, get("process.transcribing", lang=lang))
             transcription = await transcribe(audio_path)
             transcription = clean_transcription(transcription)
             logger.info(f"Transcription: {len(transcription)} chars")
@@ -156,14 +157,14 @@ def register(client):
             full_text, source = select_for_qwen(transcription, subtitles_text)
             logger.info(f"Using text source: {source}")
 
-            await _update_status(status_msg, get("process.generating_summary"))
-            summary = await generate_summary(full_text, video_title=video_title)
+            await _update_status(status_msg, get("process.generating_summary", lang=lang))
+            summary = await generate_summary(full_text, video_title=video_title, lang=lang)
             logger.info(f"Summary: {len(summary)} chars")
 
             if summary.startswith("ERROR:"):
                 raise RuntimeError(summary)
 
-            await _update_status(status_msg, get("process.sending_summary"))
+            await _update_status(status_msg, get("process.sending_summary", lang=lang))
 
             md_path = os.path.join(work_dir, "summary.md")
             with open(md_path, "w", encoding="utf-8") as f:
@@ -172,7 +173,7 @@ def register(client):
             await event.client.send_file(
                 event.chat_id,
                 md_path,
-                caption=get("process.success_caption"),
+                caption=get("process.success_caption", lang=lang),
                 reply_to=event.id,
             )
 
@@ -195,22 +196,22 @@ def register(client):
             if user_id == ADMIN_ID:
                 await _update_status(status_msg, f"❌ Error: {e}")
             else:
-                await _update_status(status_msg, get("process.error_user"))
+                await _update_status(status_msg, get("process.error_user", lang=lang))
                 await event.client.send_message(
                     ADMIN_ID,
-                    get("process.error_admin", user_id=user_id, error=e, req_id=req_id),
+                    get("process.error_admin", lang=get_user_lang(ADMIN_ID), user_id=user_id, error=e, req_id=req_id),
                 )
 
 
-async def _send_summary(event, status_msg, work_dir, full_text, video_title, req_id, start_time):
-    await _update_status(status_msg, get("process.generating_summary"))
-    summary = await generate_summary(full_text, video_title=video_title)
+async def _send_summary(event, status_msg, work_dir, full_text, video_title, req_id, start_time, lang="ru"):
+    await _update_status(status_msg, get("process.generating_summary", lang=lang))
+    summary = await generate_summary(full_text, video_title=video_title, lang=lang)
     logger.info(f"Summary: {len(summary)} chars")
 
     if summary.startswith("ERROR:"):
         raise RuntimeError(summary)
 
-    await _update_status(status_msg, get("process.sending_summary"))
+    await _update_status(status_msg, get("process.sending_summary", lang=lang))
 
     md_path = os.path.join(work_dir, "summary.md")
     with open(md_path, "w", encoding="utf-8") as f:
@@ -219,7 +220,7 @@ async def _send_summary(event, status_msg, work_dir, full_text, video_title, req
     await event.client.send_file(
         event.chat_id,
         md_path,
-        caption=get("process.success_caption"),
+        caption=get("process.success_caption", lang=lang),
         reply_to=event.id,
     )
 

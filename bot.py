@@ -33,7 +33,7 @@ from telethon.network import (
 from config import BOT_TOKEN, API_ID, API_HASH, ADMIN_ID, USE_PROXY, PROXY_URL
 from proxy_utils import parse_tg_proxy
 from logger import setup_logger
-from database import init_db
+from database import init_db, ensure_allowed, upsert_user_profile
 
 logger = setup_logger("bot")
 
@@ -53,6 +53,8 @@ def main():
 
     logger.info("Initializing database...")
     init_db()
+    if ADMIN_ID:
+        ensure_allowed(ADMIN_ID)
     logger.info("Database ready.")
 
     if USE_PROXY == "1" and PROXY_URL:
@@ -89,6 +91,21 @@ def main():
 
     logger.info("Starting bot...")
     client.start(bot_token=BOT_TOKEN)
+
+    async def _fill_admin_profile():
+        try:
+            peer = await client.get_entity(ADMIN_ID)
+            upsert_user_profile(
+                ADMIN_ID,
+                getattr(peer, "username", "") or "",
+                getattr(peer, "first_name", "") or "",
+            )
+            logger.info(f"Admin profile saved: {getattr(peer, 'first_name', '')}")
+        except Exception as e:
+            logger.warning(f"Could not fetch admin profile: {e}")
+
+    client.loop.create_task(_fill_admin_profile())
+
     logger.info(f"Bot is running. Admin ID: {ADMIN_ID}")
 
     client.run_until_disconnected()

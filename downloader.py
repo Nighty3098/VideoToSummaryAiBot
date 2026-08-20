@@ -1,12 +1,21 @@
 import os
 import re
+import time
+import shutil
 import asyncio
 import logging
 from pathlib import Path
 
 import yt_dlp
 
-from config import USE_SOCKS5, SOCKS5_PROXY
+from config import (
+    USE_SOCKS5,
+    SOCKS5_PROXY,
+    YOUTUBE_COOKIES,
+    YOUTUBE_COOKIES_FROM_BROWSER,
+    YOUTUBE_EXTRACTOR_ARGS,
+)
+from proxy_utils import socks5_health
 
 logger = logging.getLogger(__name__)
 
@@ -27,30 +36,62 @@ def is_youtube_url(text: str) -> bool:
 
 def _get_proxy_opts() -> dict:
     if USE_SOCKS5 == "1" and SOCKS5_PROXY:
-        if _check_socks5(SOCKS5_PROXY):
-            logger.info(f"Using SOCKS5 proxy for download: {SOCKS5_PROXY}")
-            return {"proxy": SOCKS5_PROXY, "socket_timeout": 10}
+        exit_ip = socks5_health(SOCKS5_PROXY)
+        if exit_ip:
+            logger.info(f"Using SOCKS5 proxy for download: {SOCKS5_PROXY} (exit IP: {exit_ip})")
+            return {"proxy": SOCKS5_PROXY, "socket_timeout": 30}
         else:
             logger.warning(f"SOCKS5 proxy {SOCKS5_PROXY} unreachable, falling back to direct")
     return {}
 
 
-def _check_socks5(proxy_url: str) -> bool:
-    import re, socket
-    m = re.match(r"socks5://([^:@]+)(?::([^@]+))?@([^:]+):(\d+)", proxy_url)
-    if not m:
-        m = re.match(r"socks5://([^:]+):(\d+)", proxy_url)
-        if not m:
-            return True
-        host, port = m.group(1), int(m.group(2))
-    else:
-        host, port = m.group(3), int(m.group(4))
-    try:
-        s = socket.create_connection((host, port), timeout=3)
-        s.close()
-        return True
-    except Exception:
-        return False
+def _session_opts() -> dict:
+    """YouTube session quality: cookies + player clients + po_token/consent args."""
+    opts = {}
+    if YOUTUBE_COOKIES and os.path.exists(YOUTUBE_COOKIES):
+        opts["cookies"] = YOUTUBE_COOKIES
+    elif YOUTUBE_COOKIES_FROM_BROWSER:
+        opts["cookiesfrombrowser"] = (YOUTUBE_COOKIES_FROM_BROWSER,)
+    user_args = []
+    if YOUTUBE_EXTRACTOR_ARGS:
+        user_args = [a.strip() for a in YOUTUBE_EXTRACTOR_ARGS.split(",") if a.strip()]
+    # web/ios clients: android client now maps to android-vr whose media URLs
+    # often return HTTP 403 through this SOCKS5 proxy
+    if not any("player_client" in a for a in user_args):
+        user_args.append("player_client=web,ios")
+    if user_args:
+        opts["extractor_args"] = {"youtube": user_args}
+    return opts
+
+
+def _js_runtime_opts() -> dict:
+    """Enable an external JS runtime (deno/node) for extraction, if available."""
+    for name in ("deno", "node", "bun", "quickjs"):
+        path = shutil.which(name)
+        if path:
+            logger.info(f"Using JS runtime for yt-dlp: {name} ({path})")
+            return {"js_runtimes": {name: {"path": path}}}
+    logger.warning("No JS runtime (deno/node) found; YouTube extraction may get HTTP 403")
+    return {}
+
+
+_RETRY_MARKERS = (
+    "HTTP Error 429",
+    "HTTP Error 403",
+    "Sign in to confirm",
+    "Too Many Requests",
+    "consent",
+    "Connection refused",
+    "Connection reset",
+    "TLS",
+    "timed out",
+    "Read timeout",
+)
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    msg = str(exc)
+    return any(marker in msg for marker in _RETRY_MARKERS)
 
 
 def extract_youtube_video_id(url: str) -> str | None:
@@ -59,7 +100,15 @@ def extract_youtube_video_id(url: str) -> str | None:
     Returns video_id or None on failure.
     """
     try:
-        with yt_dlp.YoutubeDL({"quiet": True, "extract_flat": True}) as ydl:
+        with yt_dlp.YoutubeDL(
+            {
+                "quiet": True,
+                "extract_flat": True,
+                **_session_opts(),
+                **_get_proxy_opts(),
+                **_js_runtime_opts(),
+            }
+        ) as ydl:
             info = ydl.extract_info(url, download=False)
             return info.get("id")
     except Exception as e:
@@ -91,13 +140,41 @@ async def download_youtube_audio(url: str, work_dir: str) -> tuple[str, str, str
             "skip_download": False,
             "extract_flat": False,
             # no writesubtitles here - done separately to avoid 429
+            **_session_opts(),
             **_get_proxy_opts(),
+            **_js_runtime_opts(),
         }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            audio_path = os.path.join(work_dir, f"{info['id']}.mp3")
-            title = info.get("title", "")
-            return audio_path, info["id"], title
+        last_err: Exception | None = None
+        alternate_clients = [
+            "player_client=mweb,web",
+            "player_client=web,android_creator",
+            "player_client=web",
+        ]
+        for attempt in range(3):
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    audio_path = os.path.join(work_dir, f"{info['id']}.mp3")
+                    title = info.get("title", "")
+                    return audio_path, info["id"], title
+            except Exception as e:
+                last_err = e
+                if not _is_retryable(e) or attempt == 2:
+                    raise
+                backoff = 30 * (attempt + 1)
+                logger.warning(
+                    f"YouTube blocked/errored (attempt {attempt + 1}/3), retrying in {backoff}s: {e}"
+                )
+                # switch player client on retry - some clients' media URLs are
+                # intermittently rejected by googlevideo through this proxy
+                if alternate_clients:
+                    ydl_opts["extractor_args"] = {
+                        "youtube": [alternate_clients.pop(0)]
+                    }
+                time.sleep(backoff)
+        if last_err:
+            raise last_err
+        raise RuntimeError("audio download failed without an exception")
 
     audio_path, video_id, video_title = await loop.run_in_executor(None, _sync_audio)
 
@@ -121,7 +198,9 @@ async def _try_download_subs(
             "subtitleslangs": ["ru", "en"],
             "skip_download": True,
             "outtmpl": outtmpl,
+            **_session_opts(),
             **_get_proxy_opts(),
+            **_js_runtime_opts(),
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.extract_info(url, download=True)
