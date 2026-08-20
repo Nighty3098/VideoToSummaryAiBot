@@ -47,6 +47,13 @@ QWEN_RESPONSE_SELECTORS = (
 
 QWEN_STOP_BTN = "button:has(use[*|href='#icon-fill-stop-011']), .icon-fill-stop-011"
 
+QWEN_SEND_BTN = (
+    "button[aria-label='Send Message'], "
+    "button:has(.anticon-send), "
+    ".chat-prompt-send-button button, "
+    "button:has(.send-icon)"
+)
+
 STEALTH_SCRIPT = """
     Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
     if (!navigator.plugins.length) {
@@ -194,8 +201,18 @@ async def _query_qwen(prompt: str) -> str:
                 "button:has-text('Sign in'), "
                 ".auth-button-ui.login"
             ).first
-            if await login_btn.is_visible(timeout=3000):
-                logger.warning("Qwen login page detected, but continuing anyway...")
+            login_detected = await login_btn.is_visible(timeout=3000)
+            if login_detected:
+                logger.warning("Qwen login page detected, waiting for session restore...")
+                for _ in range(10):
+                    await asyncio.sleep(3)
+                    if not await login_btn.is_visible(timeout=1000):
+                        login_detected = False
+                        logger.info("Qwen session restored, continuing...")
+                        break
+                if login_detected:
+                    logger.critical("Qwen requires login; aborting instead of sending prompt into login page")
+                    return get("qwen.need_login")
 
             input_sel = QWEN_INPUT_SELECTOR
             try:
@@ -209,12 +226,7 @@ async def _query_qwen(prompt: str) -> str:
             await input_field.fill(prompt)
             await asyncio.sleep(1)
 
-            send_button = page.locator(
-                "button[aria-label='Send Message'], "
-                "button:has(.anticon-send), "
-                ".chat-prompt-send-button button, "
-                "button:has(.send-icon)"
-            ).first
+            send_button = page.locator(QWEN_SEND_BTN).first
             send_visible = await send_button.is_visible()
             send_enabled = await send_button.is_enabled()
             logger.info(f"Send button visible={send_visible}, enabled={send_enabled}")
@@ -230,9 +242,13 @@ async def _query_qwen(prompt: str) -> str:
             logger.info("Waiting for Qwen response...")
             last_text = ""
             stable_count = 0
-            rechecked_send = False
-            recovered = False
             regenerate_clicked = False
+            last_recheck = -999
+            recoveries = 0
+            MAX_RECOVERIES = 4
+            RECHECK_INTERVAL = 40
+            abandoned_at: int | None = None
+            ABANDON_GRACE = 120
 
             for attempt in range(QWEN_TIMEOUT * 2):
                 try:
@@ -264,8 +280,8 @@ async def _query_qwen(prompt: str) -> str:
                         if regenerate_clicked:
                             break
 
-                if attempt == 20 and not rechecked_send:
-                    rechecked_send = True
+                if attempt - last_recheck >= RECHECK_INTERVAL:
+                    last_recheck = attempt
                     is_generating = await page.locator(QWEN_STOP_BTN).first.is_visible(timeout=200)
                     if not is_generating:
                         has_content = False
@@ -279,16 +295,20 @@ async def _query_qwen(prompt: str) -> str:
                                         break
                             except Exception:
                                 continue
-                        if not has_content and not recovered:
-                            logger.warning("No content and no generation, re-sending prompt (recovery)...")
-                            await _refill_and_send(page, prompt)
-                            recovered = True
-                            regenerate_clicked = False
-                            await asyncio.sleep(2)
-                        elif await send_button.is_visible(timeout=1000) and await send_button.is_enabled(timeout=1000):
-                            logger.warning("Send button still visible, clicking again...")
-                            await send_button.click()
-                            await asyncio.sleep(2)
+                        if not has_content:
+                            if recoveries < MAX_RECOVERIES:
+                                recoveries += 1
+                                logger.warning(
+                                    f"No content and no generation, re-sending prompt "
+                                    f"(recovery {recoveries}/{MAX_RECOVERIES})..."
+                                )
+                                await _refill_and_send(page, prompt)
+                                regenerate_clicked = False
+                                await asyncio.sleep(2)
+                            elif await send_button.is_visible(timeout=1000) and await send_button.is_enabled(timeout=1000):
+                                logger.warning("Send button still visible, clicking again...")
+                                await send_button.click()
+                                await asyncio.sleep(2)
 
                 is_generating = await page.locator(QWEN_STOP_BTN).first.is_visible(timeout=100)
 
@@ -325,6 +345,20 @@ async def _query_qwen(prompt: str) -> str:
                     elif text != last_text:
                         stable_count = 0
                         last_text = text
+                elif abandoned_at is None and not is_generating and recoveries >= MAX_RECOVERIES:
+                    abandoned_at = attempt
+                    logger.warning(
+                        f"All {MAX_RECOVERIES} recoveries used and no response yet; "
+                        "will abandon shortly"
+                    )
+                elif (
+                    abandoned_at is not None
+                    and not text
+                    and not is_generating
+                    and attempt - abandoned_at >= ABANDON_GRACE
+                ):
+                    logger.error("Qwen still not responding after recoveries, giving up")
+                    return get("qwen.no_response")
 
                 if attempt % 40 == 0:
                     logger.info(f"Waiting for Qwen... ({attempt // 2}s)")
@@ -355,18 +389,20 @@ async def _refill_and_send(page, prompt: str):
     await input_field.click()
     await input_field.fill(prompt)
     await asyncio.sleep(1)
-    send_button = page.locator(
-        "button[aria-label='Send Message'], "
-        "button:has(.anticon-send), "
-        ".chat-prompt-send-button button, "
-        "button:has(.send-icon)"
-    ).first
+    send_button = page.locator(QWEN_SEND_BTN).first
     if await send_button.is_visible() and await send_button.is_enabled():
         await send_button.click()
         logger.info("Recovery: prompt sent via send button")
     else:
         await page.keyboard.press("Enter")
         logger.info("Recovery: prompt sent via Enter")
+    await asyncio.sleep(2)
+    try:
+        val = await input_field.input_value()
+        if val and len(val) > 50:
+            logger.warning("Recovery: input still has the prompt, send likely failed")
+    except Exception:
+        pass
 
 
 def _clean_lock_files():

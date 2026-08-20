@@ -48,7 +48,8 @@
     "qwen": {
       "rate_limit": "ERROR: Qwen rate limit exceeded. Try again later.",
       "timeout": "ERROR: Qwen AI did not respond within the timeout period.",
-      "no_response": "ERROR: Qwen did not respond in time."
+      "no_response": "ERROR: Qwen did not respond in time.",
+      "need_login": "ERROR: Qwen session has expired. Please log in to Qwen in the browser and try again."
     }
   },
 
@@ -101,7 +102,8 @@
     "qwen": {
       "rate_limit": "ОШИБКА: Превышен лимит запросов Qwen. Попробуйте позже.",
       "timeout": "ОШИБКА: Qwen AI не ответил за отведённое время.",
-      "no_response": "ОШИБКА: Qwen не ответил вовремя."
+      "no_response": "ОШИБКА: Qwen не ответил вовремя.",
+      "need_login": "ОШИБКА: Сессия Qwen истекла. Пожалуйста, войдите в Qwen в браузере и повторите попытку."
     }
   }
 }
